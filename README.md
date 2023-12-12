@@ -7,7 +7,7 @@ TrEnCo is a tool for pruning and compressing Tree Ensembles (Random Forests, Gra
 To install and use TrEnCo, you need to clone this repository:
 
 ```bash
-git clone https://www.github.com/youssouf1994/TrEnCo.git
+git clone https://www.github.com/TrEnCo-Org/TrEnCo.git
 ```
 
 Then, you need to install the required packages:
