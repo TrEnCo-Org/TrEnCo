@@ -156,4 +156,12 @@ class PrunerMIP(BasePrunerMIP):
         # at least by the original classifier.
         assert(sum(p * w) >= rhs)
         self.model.addConstr(lhs >= rhs)
-        
+
+class PrunerAccuracyMIP(BasePrunerMIP):
+    pass
+
+class PrunerLossLessMIP(BasePrunerMIP):
+    pass
+
+class PrunerLossLessDistMIP(BasePrunerMIP):
+    pass   
