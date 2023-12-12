@@ -27,7 +27,7 @@ clf = Classifier(rf)
 
 # Build and prune the classifier
 # Using the MIP compressor
-pruner = PrunerMIP(clf, train, valid, verbose=False)
+pruner = PrunerMIP(clf, train, verbose=True)
 pruner.build()
 pruner.prune()
 if pruner.pruned is None:
