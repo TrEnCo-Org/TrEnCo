@@ -56,7 +56,7 @@ def prune_mip_acc(
         # Get the sample x and 
         # the target class t.
         x, t = X[i], y[i]
-        assert (isinstance(t, int) and 0 <= t < nc)
+        assert (0 <= t < nc)
         
         # Predicted probabilities:
         # for each classifier e,

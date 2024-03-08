@@ -11,7 +11,6 @@ import numpy as np
 from trenco.pruning import prune_mip_acc
 from trenco.ensemble import predict
 
-
 folder = Path(__file__).parent 
 data_folder = folder
 data_path = str(data_folder / 'FICO.full.csv')
@@ -24,7 +23,7 @@ X = df.drop(columns=['Class']).values
 n = X.shape[0]
 idx = np.arange(n)
 np.random.shuffle(idx)
-m = 100
+m = 200
 idx = idx[:m]
 X, y = X[idx], y[idx]
 
