@@ -9,7 +9,7 @@ version = "1.0.0"
 description = "TrEnCo: an efficient and accurate tool for compressing ensembles"
 readme = "README.md"
 requires-python = ">=3.10"
-license = "MIT"
+license = {file = "LICENSE"}
 authors = [
     {name = "Youssouf Emie", email = "youssouf.emine@polymtl.ca"}
 ]
