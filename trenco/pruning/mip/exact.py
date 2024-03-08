@@ -5,6 +5,7 @@ def prune_mip_exact(
     H: Ensemble,
     X,
     w = None,
+    voting: str = "hard",
     eps: float = 1.0,
     **kwargs
 ):
@@ -29,7 +30,7 @@ def prune_mip_exact(
         # Predicted probabilities
         # for each classifier e,
         # for each class k.
-        p = predict_proba(H, x)
+        p = predict_proba(H, x, voting=voting)
 
         # Predicted class: l
         # by the ensemble for the sample x.

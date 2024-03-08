@@ -1,3 +1,4 @@
 from . import pruning
+from . import ensemble
 
-__all__ = ["pruning"]
+__all__ = ["pruning", "ensemble"]

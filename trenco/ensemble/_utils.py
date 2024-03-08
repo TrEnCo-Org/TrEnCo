@@ -10,7 +10,16 @@ def to_one_hot(p, axis=-1):
     p = np.swapaxes(q, axis, -1)
     return p
 
-def predict_proba(H, X, voting = "soft"):    
+def predict_proba(
+    H,
+    X,
+    voting = "hard",
+    squeeze = True
+):
+    # Check if the voting method is supported.
+    if voting not in ["soft", "hard"]:
+        raise ValueError("Unsupported voting method. voting must be 'soft' or 'hard'")
+   
     # Predicted probabilities:
     # for each classifier e on the 
     # dataset X.
@@ -21,9 +30,7 @@ def predict_proba(H, X, voting = "soft"):
     p = np.stack(p)
     assert(p.ndim == 3)
     
-    if voting not in ["soft", "hard"]:
-        raise ValueError("Unsupported voting method. voting must be 'soft' or 'hard'")
-    elif voting == "hard":
+    if voting == "hard":
         # If the voting method is hard,
         # convert the probabilities to
         # one-hot encoded predictions.
@@ -36,6 +43,13 @@ def predict_proba(H, X, voting = "soft"):
     
     # Squeeze the array such that the result
     # is a 2D array (nc, ne) if n = 1
-    if X.shape[0] == 1:
+    if squeeze and X.shape[0] == 1:
         p = np.squeeze(p, axis=0)
     return p
+
+def predict(H, X, w, voting = "hard"):
+    # Predicted class:
+    # for each sample x in the dataset X.
+    p = predict_proba(H, X, voting=voting, squeeze=False)
+    l = np.argmax(p.dot(w), axis=-1)
+    return l

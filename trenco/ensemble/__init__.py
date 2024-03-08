@@ -1,5 +1,5 @@
 from ._ensemble import Ensemble
-from ._utils import predict_proba
+from ._utils import predict_proba, predict
 
 __all__ = [
     "Ensemble",

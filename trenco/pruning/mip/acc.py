@@ -9,6 +9,7 @@ def prune_mip_acc(
     X,
     y,
     w = None,
+    voting: str = "hard",
     eps: float = 1.0,
     **kwargs
 ):
@@ -66,7 +67,7 @@ def prune_mip_acc(
         # Predicted probabilities:
         # for each classifier e,
         # for each class k.
-        p = predict_proba(H, x)
+        p = predict_proba(H, x, voting=voting)
         
         # Predicted class: l
         # by the ensemble for the sample x.
@@ -89,7 +90,7 @@ def prune_mip_acc(
                 
                 # Add the voting constraint to the model
                 # as a lazy constraint.
-                cons = mip.addLConstr(lhs >= rhs, name=f"vote_{i}_{k}_{kk}")
+                cons = mip.addLConstr(lhs >= rhs)
                 cons.Lazy = 1
 
     # Accuracy constraint:
