@@ -21,12 +21,6 @@ def prune_mip_exact(
         # Get the sample x.
         x = X[i]
 
-        # Reshape the sample x.
-        # such that it has a single row.
-        # and can be used as input to the
-        # estimators.
-        x = x.reshape(1, -1)
-        
         # Predicted probabilities
         # for each classifier e,
         # for each class k.

@@ -1,4 +1,3 @@
-
 from itertools import product
 
 from ._utils import *
@@ -41,9 +40,12 @@ def prune_mip_acc(
         rhs = 1
         mip.addConstr(lhs == rhs)
 
-    # Linearization:
-    # z[i,k,e] = v[i,k] * u[e]
-    for i, k, e in z.keys():
+    # Linearization of z[i,k,e] = v[i,k] * u[e]
+    # using the following constraints:
+    # z[i,k,e] <= v[i,k]
+    # z[i,k,e] <= u[e]
+    # z[i,k,e] >= v[i,k] + u[e] - 1
+    for i, k, e in product(range(n), range(nc), range(ne)):
         cons = mip.addLConstr(z[i,k,e] <= v[i,k])
         cons.Lazy = 1
         cons = mip.addLConstr(z[i,k,e] <= u[e])
@@ -57,12 +59,7 @@ def prune_mip_acc(
         # Get the sample x and 
         # the target class t.
         x, t = X[i], y[i]
-        
-        # Reshape the sample x
-        # such that it has a single row
-        # and can be used as input to the
-        # estimators.
-        x = x.reshape(1, -1)
+        assert (isinstance(t, int) and 0 <= t < nc)
         
         # Predicted probabilities:
         # for each classifier e,

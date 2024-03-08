@@ -19,6 +19,12 @@ def predict_proba(
     # Check if the voting method is supported.
     if voting not in ["soft", "hard"]:
         raise ValueError("Unsupported voting method. voting must be 'soft' or 'hard'")
+    
+    if squeeze and X.ndim == 1:
+        # If the dataset X is 1D,
+        # reshape it to 2D so that
+        # it can be fed to the estimators.
+        X = X.reshape(1, -1)
    
     # Predicted probabilities:
     # for each classifier e on the 
