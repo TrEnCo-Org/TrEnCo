@@ -12,7 +12,7 @@ def prune_mip_acc(
     eps: float = 1.0,
     **kwargs
 ):
-    # Get the MIP configuration:
+    # Get the MIP parameters:
     n, ne, nc, w, wm = get_mip_params(H, X, w)
 
     # Create a new gurobi model, and
