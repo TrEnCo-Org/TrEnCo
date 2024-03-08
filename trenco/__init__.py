@@ -1,6 +1,3 @@
-from . import utils
-from . import datasets
-from . import model
-from . import typing
+from . import pruning
 
-__all__ = ["utils", "datasets", "model", "typing"]
+__all__ = ["pruning"]
