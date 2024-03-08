@@ -47,12 +47,9 @@ def prune_mip_acc(
     # z[i,k,e] >= v[i,k] + u[e] - 1
     for i, k, e in product(range(n), range(nc), range(ne)):
         cons = mip.addLConstr(z[i,k,e] <= v[i,k])
-        cons.Lazy = 1
         cons = mip.addLConstr(z[i,k,e] <= u[e])
-        cons.Lazy = 1
         cons = mip.addLConstr(z[i,k,e] >= v[i,k]+u[e]-1)
-        cons.Lazy = 1
-    
+
     acc = 0
     expr = gp.LinExpr()
     for i in range(n):
