@@ -1,6 +1,6 @@
 import numpy as np
 
-def get_greedy_params(H, X, w):
+def get_greedy_params(H, w):
     ne = len(H)
     
     if w is None:

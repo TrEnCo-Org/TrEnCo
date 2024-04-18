@@ -55,3 +55,13 @@ def prune_mip_exact(
         return None
 
     return get_u(u)
+
+def prune_mip_lossless(
+    H: Ensemble,
+    X,
+    w = None,
+    O = None,
+    voting: str = "hard",
+    **kwargs
+):
+    return 

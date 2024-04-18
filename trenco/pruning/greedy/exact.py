@@ -1,25 +1,28 @@
 from ._utils import *
 from ...ensemble import Ensemble
-from ...ensemble import predict
+from ...ensemble import predict_proba
 
 def prune_greedy_exact(
     H: Ensemble,
     X,
+    y,
+    k: int,
     w = None,
     voting: str = "hard"
 ):
-    ne, w = get_greedy_params(H, X, w)
+    ne, w = get_greedy_params(H, w)
+    proba = predict_proba(
+        H, X, voting=voting, squeeze=False)
     
-    idx = np.arange(ne)
-    np.random.shuffle(idx)
+    # Change y to one-hot encoding
+    y_one_hot = np.eye(proba.shape[-2])[y]
     
-    u = np.ones(ne)
-    y = predict(H, X, w, voting=voting)
-    for i in idx:
-        u[i] = 0
-        yu = predict(H, X, w*u, voting=voting)
-        if np.all(y == yu):
-            continue
-        else:
-            u[i] = 1  
+    # Calculate the scores
+    scores = [np.mean(proba[:, :, e] - y_one_hot)**2
+              for e in range(ne)]
+    scores = np.array(scores)
+
+    idx = np.argsort(scores / w)
+    u = np.zeros(len(H), dtype=int)
+    u[idx[:k]] = 1
     return u
