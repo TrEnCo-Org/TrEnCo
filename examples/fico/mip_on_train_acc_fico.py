@@ -8,8 +8,11 @@ from sklearn.model_selection import train_test_split
 import pandas as pd
 import numpy as np
 
-from trenco.pruning import prune_mip_acc
-from trenco.ensemble import predict
+from trenco.pruning import (
+    PrunerMIP,
+    PrunerGreedy,
+    predict
+)
 
 folder = Path(__file__).parent 
 data_folder = folder
@@ -29,13 +32,11 @@ X, y = X[idx], y[idx]
 
 X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.20, random_state=42)
 
-rf = RandomForestClassifier(
-    n_estimators=100,
-    random_state=0
-)
+rf = RandomForestClassifier(n_estimators=100, random_state=42)
 rf.fit(X_train, y_train)
 
-u = prune_mip_acc(rf, X_train, y_train, verbose=True)
+mip_pruner = PrunerMIP(rf.estimators_, eps=0.1)
+u = mip_pruner.prune(X_train)
 if u is not None:
     n = len(X_train)
     ne = len(rf)
@@ -44,20 +45,50 @@ if u is not None:
     w = np.ones(ne)
     nt = np.sum(u)
     
-    y1 = predict(rf, X_train, w)
-    y2 = predict(rf, X_train, w*u)
+    y1 = predict(rf.estimators_, X_train, w)
+    y2 = predict(rf.estimators_, X_train, w*u)
 
     print(f"Number of trees: {ne}")
     print(f"Number of trees in the pruned ensemble: {nt}")
     print(f"Accuracy of the original ensemble: {accuracy_score(y_train, y1)}")
     print(f"Accuracy of the pruned ensemble: {accuracy_score(y_train, y2)}")
-    print(f"Loyalty of the pruned ensemble: {accuracy_score(y1, y2)}")
+    print(f"Fidelity of the pruned ensemble: {accuracy_score(y1, y2)}")
     
-    y1 = predict(rf, X_test, w)
-    y2 = predict(rf, X_test, w*u)
+    y1 = predict(rf.estimators_, X_test, w)
+    y2 = predict(rf.estimators_, X_test, w*u)
 
     print(f"Accuracy of the original ensemble on test set: {accuracy_score(y_test, y1)}")
     print(f"Accuracy of the pruned ensemble on test set: {accuracy_score(y_test, y2)}")
-    print(f"Loyalty of the pruned ensemble on test set: {accuracy_score(y1, y2)}")
+    print(f"Fidelity of the pruned ensemble on test set: {accuracy_score(y1, y2)}")
 else:
-    print("No pruned trees")
+    print("No pruned trees found using MIP.")
+
+greedy_pruner = PrunerGreedy(rf.estimators_, ne=5)
+
+u = greedy_pruner.prune(X_train)
+
+if u is not None:
+    n = len(X_train)
+    ne = len(rf)
+    nc = rf.n_classes_
+    assert (isinstance(nc, int) and nc > 0)
+    w = np.ones(ne)
+    nt = np.sum(u)
+    
+    y1 = predict(rf.estimators_, X_train, w)
+    y2 = predict(rf.estimators_, X_train, w*u)
+
+    print(f"Number of trees: {ne}")
+    print(f"Number of trees in the pruned ensemble: {nt}")
+    print(f"Accuracy of the original ensemble: {accuracy_score(y_train, y1)}")
+    print(f"Accuracy of the pruned ensemble: {accuracy_score(y_train, y2)}")
+    print(f"Fidelity of the pruned ensemble: {accuracy_score(y1, y2)}")
+    
+    y1 = predict(rf.estimators_, X_test, w)
+    y2 = predict(rf.estimators_, X_test, w*u)
+
+    print(f"Accuracy of the original ensemble on test set: {accuracy_score(y_test, y1)}")
+    print(f"Accuracy of the pruned ensemble on test set: {accuracy_score(y_test, y2)}")
+    print(f"Fidelity of the pruned ensemble on test set: {accuracy_score(y1, y2)}")
+else:
+    print("No pruned trees found using Greedy.")

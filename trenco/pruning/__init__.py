@@ -1,9 +1,15 @@
-from .mip import prune_mip_exact
-from .mip import prune_mip_acc
-from .greedy import prune_greedy_exact
+from .mip import PrunerMIP
+from .greedy import PrunerGreedy
+from .utils import (
+    predict_single_proba,
+    predict_proba,
+    predict
+)
 
 __all__ = [
-    'prune_mip_exact',
-    'prune_mip_acc',
-    'prune_greedy_exact',
+    'PrunerMIP',
+    'PrunerGreedy',
+    'predict_single_proba',
+    'predict_proba',
+    'predict'
 ]
