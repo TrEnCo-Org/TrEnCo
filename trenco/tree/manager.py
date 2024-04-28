@@ -15,6 +15,9 @@ class TreeManager(Iterable[int]):
     # of the tree attribute.
     # tree: sklearn.tree._tree.Tree
 
+    # Root node of the tree.
+    root: int
+
     # Number of nodes in the tree.
     n_nodes: int
 
@@ -26,6 +29,12 @@ class TreeManager(Iterable[int]):
 
     # Depth of each node.
     node_depth: dict[int, int]
+
+    # Left child of each node.
+    left: dict[int, int]
+
+    # Right child of each node.
+    right: dict[int, int]
 
     # Feature of each inner node.
     features: dict[int, str]
@@ -47,11 +56,14 @@ class TreeManager(Iterable[int]):
         self.n_nodes = tree.node_count
         self.max_depth = tree.max_depth
         self.leaves = set()
+        self.left = dict()
+        self.right = dict()
         self.node_depth = dict()
         self.features = dict()
         self.threshold = dict()
 
-        stack: list[tuple[int, int]] = [(0, 0)]
+        self.root = 0
+        stack: list[tuple[int, int]] = [(self.root, 0)]
         while len(stack) > 0:
             n, d = stack.pop()
             self.node_depth[n] = d        
@@ -64,13 +76,16 @@ class TreeManager(Iterable[int]):
                 self.leaves.add(n)
                 continue
 
+            self.left[n] = l
+            self.right[n] = r
+
             # Get the feature index of the node.
             fi: int = tree.feature[n]
             
             # Get the column name associated
             # with the feature index.
             c = fe.columns[fi]
-            if c in fe.types.keys():
+            if c in fe.types:
                 ft = fe.types[c]
                 assert (
                     ft == Feature.BINARY
@@ -80,21 +95,19 @@ class TreeManager(Iterable[int]):
                 # If the feature name is already
                 # this means that the feature is
                 # binary or numerical.
-                self.features[n] = c
+                f = c
                 if ft == Feature.NUMERICAL:
                     self.threshold[n] = tree.threshold[n]
             else:
                 # If the feature name is not already
                 # this means that the feature is
                 # categorical.
-                for f, cat in fe.cat.items():
-                    if c in cat:
-                        self.features[n] = f
-                        self.category[n] = c
-                        break
-                else:
-                    msg = f"Feature {c} not found in the feature encoder."
-                    raise ValueError(msg)
+                assert c in fe.inv_cat
+                f = fe.inv_cat[c]
+                self.category[n] = c
+
+            # Add the feature to the features
+            self.features[n] = f
 
             # Add the left and right children
             # to the stack. The depth of the
@@ -116,7 +129,7 @@ class TreeManager(Iterable[int]):
         # Return the set of nodes at depth d.
         # If only_inner is True, then only return
         # the inner nodes at depth d.
-        nodes = set()
+        nodes: set[int] = set()
         for n, depth in self.node_depth.items():
             if depth == d:
                 if only_inner and n in self.leaves:
@@ -130,7 +143,7 @@ class TreeManager(Iterable[int]):
     ) -> set[int]:
         # Return the set of nodes that split
         # on the feature c.
-        nodes = set()
+        nodes: set[int] = set()
         for n in self.inner_nodes:
             if self.features[n] == f:
                 nodes.add(n)
@@ -176,6 +189,9 @@ class TreeEnsembleManager(Iterable[TreeManager]):
 
     def __len__(self):
         return len(self.tree_managers)
+
+    def __getitem__(self, t: int) -> TreeManager:
+        return self.tree_managers[t]
     
     # Private methods:
     # __fit_tree_managers

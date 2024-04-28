@@ -32,6 +32,9 @@ class SeparatorMIP(BaseSeparator):
     # Flow variables.
     branch_vars: gp.tupledict[tuple[int, int], gp.Var]
 
+    # Probability variables.
+    vote_vars: gp.tupledict[int, gp.Var]
+
     # Consistency variables.
     # Numerical features.
     num_vars: gp.tupledict[tuple[str, int], gp.Var]
@@ -40,13 +43,34 @@ class SeparatorMIP(BaseSeparator):
     # Categorical features.
     cat_vars: gp.tupledict[str, gp.Var]
 
-    # Score variables.
-    prob_vars: gp.tupledict[int, gp.Var]
-    prob_u_vars: gp.tupledict[int, gp.Var]
+    # Separation variables.
+    vote_u_vars: gp.tupledict[int, gp.Var]
     
     # Constraints:
-    prob_conss: gp.tupledict[int, gp.Constr]
-    prob_u_conss: gp.tupledict[int, gp.Constr]
+
+    # Tree path constraints.
+    root_conss: gp.tupledict[int, gp.Constr]
+    flow_conss: gp.tupledict[tuple[int, int], gp.Constr]
+    branch_to_left_conss: gp.tupledict[tuple[int, int], gp.Constr]
+    branch_to_right_conss: gp.tupledict[tuple[int, int], gp.Constr]
+    
+    # Feature consistency constraints.
+    # Numerical features.
+    num_start_conss: gp.tupledict[str, gp.Constr]
+    num_level_conss: gp.tupledict[tuple[str, int], gp.Constr]
+    num_left_conss: gp.tupledict[tuple[str, int, int, int], gp.Constr]
+    num_right_conss: gp.tupledict[tuple[str, int, int, int], gp.Constr]
+    num_right_eps_conss: gp.tupledict[tuple[str, int, int, int], gp.Constr]
+    # Binary features.
+    bin_left_conss: gp.tupledict[tuple[str, int, int], gp.Constr]
+    bin_right_conss: gp.tupledict[tuple[str, int, int], gp.Constr]
+    # Categorical features.
+    cat_left_conss: gp.tupledict[tuple[str, int, int], gp.Constr]
+    cat_right_conss: gp.tupledict[tuple[str, int, int], gp.Constr]
+    cat_sum_conss: gp.tupledict[str, gp.Constr]
+    
+    vote_conss: gp.tupledict[int, gp.Constr]
+    vote_u_conss: gp.tupledict[int, gp.Constr]
     maj_class_conss: gp.tupledict[int, gp.Constr]
 
     def __init__(
@@ -65,6 +89,8 @@ class SeparatorMIP(BaseSeparator):
         self.mip = gp.Model("SEP_MIP", env=self.env)
  
     def separate(self, u) -> list[dict[str, float]]:
+        self.build_base_mip()
+
         em = self.tree_ensemble_manager_
         res = []
         for cl in range(em.n_classes):
@@ -78,6 +104,7 @@ class SeparatorMIP(BaseSeparator):
                         res.append(x)
                     elif cp > cl and obj > 0.0:
                         res.append(x)
+                self.reset_mip()
         return res
 
     def separate_classes(
@@ -85,58 +112,54 @@ class SeparatorMIP(BaseSeparator):
         u,
         cl: int,
         cp: int
-    ):
-        self.build_base_mip()
-        
-        self.add_prob_u_vars([cl, cp])
-        self.add_prob_u_conss(u, [cl, cp])
+    ):  
+        self.add_vote_u_vars([cl, cp])
+        self.add_vote_u_conss(u, [cl, cp])
         self.add_maj_class_conss(cl)
         self.add_objective(cl, cp)
 
         self.mip.optimize()
         
         if self.mip.status == GRB.INFEASIBLE:
-            self.clear_mip()
             return None
 
         x = self.get_sol()
-        obj = self.prob_u_vars[cp].X - self.prob_u_vars[cl].X
-        self.clear_mip()
+        obj = self.mip.ObjVal
         return obj, x
 
     def set_gurobi_param(self, param, value):
         self.mip.setParam(param, value)
 
-    def clear_mip(self):
-        self.mip.remove(self.prob_u_vars)
-        self.mip.remove(self.prob_u_conss)
-        self.mip.remove(self.maj_class_conss)
-
     def build_base_mip(self):
         # Variables:
         # self.add_x_vars()
-        self.add_path_vars()
+        self.add_flow_vars()
         self.add_branch_vars()
+        self.add_vote_vars()
         self.add_num_vars()
         self.add_bin_vars()
         self.add_cat_vars()
-        self.add_prob_vars()
 
         # Constraints:
 
         # Path and flow constraints.
         self.add_root_conss()
-        self.add_children_conss()
-        self.add_depth_to_left_conss()
-        self.add_depth_to_right_conss()
-
-        # Score constraints.
-        self.add_prob_conss()
+        self.add_flow_conss()
+        self.add_branch_to_left_conss()
+        self.add_branch_to_right_conss()
 
         # Feature consistency constraints.
         self.add_num_conss()
         self.add_bin_conss()
         self.add_cat_conss()
+
+        # Vote constraints.
+        self.add_vote_conss()
+
+    def reset_mip(self):
+        self.mip.remove(self.vote_u_vars)
+        self.mip.remove(self.vote_u_conss)
+        self.mip.remove(self.maj_class_conss)
 
     def add_x_vars(self):
         # Variables for each feature.
@@ -150,11 +173,7 @@ class SeparatorMIP(BaseSeparator):
             name="x"
         )
 
-    def add_path_vars(self):
-        # Variables for each node, in each tree.
-        # y_{t, n} = 1 if node n is active
-        # in tree t, 0 otherwise.
-        # This variable can be set as continuous.
+    def add_flow_vars(self):
         em = self.tree_ensemble_manager_
         idx = [
             (t, n)
@@ -170,11 +189,6 @@ class SeparatorMIP(BaseSeparator):
         )
 
     def add_branch_vars(self):  
-        # Indicator variables for each depth,
-        # in each tree.
-        # lam_{t, d} = 1 if the path goes to
-        # left branch at depth d in tree t,
-        # 0 otherwise.
         em = self.tree_ensemble_manager_
         idx = [
             (t, d)
@@ -190,10 +204,11 @@ class SeparatorMIP(BaseSeparator):
     def add_num_vars(self):
         em = self.tree_ensemble_manager_
         idx = [
-            (c, j)
-            for c, lvls in em.levels.items()
-            for j in range(len(lvls))
+            (f, j)
+            for f in em.levels
+            for j in range(len(em.levels[f]))
         ]
+
         if len(idx) == 0:
             self.num_vars = gp.tupledict()
             return
@@ -209,12 +224,14 @@ class SeparatorMIP(BaseSeparator):
     def add_bin_vars(self):
         fe = self.feature_encoder_
         idx = [
-            c for c, ft in fe.types.items()
-            if ft == Feature.BINARY
+            f for f in fe.types
+            if fe.types[f] == Feature.BINARY
         ]
+
         if len(idx) == 0:
             self.bin_vars = gp.tupledict()
             return
+
         self.bin_vars = self.mip.addVars(
             idx,
             vtype=GRB.BINARY,
@@ -223,28 +240,30 @@ class SeparatorMIP(BaseSeparator):
 
     def add_cat_vars(self):
         fe = self.feature_encoder_
-        idx = list(itertools.chain(*fe.cat.values()))
+        idx = [v for v in fe.inv_cat]
+
         if len(idx) == 0:
             self.cat_vars = gp.tupledict()
             return
+
         self.cat_vars = self.mip.addVars(
             idx,
             vtype=GRB.BINARY,
             name="nu"
         )
 
-    def add_prob_vars(self):
+    def add_vote_vars(self):
         em = self.tree_ensemble_manager_
-        self.prob_vars = self.mip.addVars(
-            range(em.n_classes),
+        self.vote_vars = self.mip.addVars(
+            em.n_classes,
             lb=0.0,
             vtype=GRB.CONTINUOUS,
             name="z"
         )
 
-    def add_prob_u_vars(self, c):
-        self.prob_u_vars = self.mip.addVars(
-            c,
+    def add_vote_u_vars(self, classes: list[int]):
+        self.vote_u_vars = self.mip.addVars(
+            classes,
             lb=0.0,
             vtype=GRB.CONTINUOUS,
             name="zeta"
@@ -252,150 +271,171 @@ class SeparatorMIP(BaseSeparator):
 
     def add_root_conss(self):
         em = self.tree_ensemble_manager_
-        for t in range(em.n_trees):
-            self.mip.addConstr(
-                self.flow_vars[(t, 0)] == 1,
-                name=f"root_{t}"
-            )
+        self.root_conss = self.mip.addConstrs(
+            self.flow_vars[(t, em[t].root)] == 1
+            for t in range(em.n_trees)
+        )
 
-    def add_children_conss(self):
+    def add_flow_conss(self):
         em = self.tree_ensemble_manager_
-        for t, tm in enumerate(em):
-            for n in tm.inner_nodes:
-                l = tm.tree.children_left[n]
-                r = tm.tree.children_right[n]
-                assert l != r
-                
-                self.mip.addConstr(
-                    self.flow_vars[(t, l)] + self.flow_vars[(t, r)] == self.flow_vars[(t, n)],
-                    name=f"split_{t}_{n}"
-                )
+        self.flow_conss = self.mip.addConstrs(
+            self.flow_vars[(t, n)] ==
+            self.flow_vars[(t, em[t].left[n])]
+            + self.flow_vars[(t, em[t].right[n])]
+            for t in range(em.n_trees)
+            for n in em[t].inner_nodes
+        )
 
-    def add_depth_to_left_conss(self):
+    def add_branch_to_left_conss(self):
         em = self.tree_ensemble_manager_
-        for t, tm in enumerate(em):
-            for d in range(tm.max_depth):
-                lhs = gp.LinExpr()
-                for n in tm.nodes_at_depth(d):
-                    l = tm.tree.children_left[n]
-                    assert l != -1
-                    
-                    lhs += self.flow_vars[(t, l)]
+        self.branch_to_left_conss = self.mip.addConstrs(
+            gp.quicksum(
+                self.flow_vars[(t, em[t].left[n])]
+                for n in em[t].nodes_at_depth(d)
+            ) <= self.branch_vars[(t, d)]
+            for t in range(em.n_trees)
+            for d in range(em[t].max_depth)
+        )
 
-                rhs = self.branch_vars[(t, d)]
-                self.mip.addConstr(
-                    lhs <= rhs,
-                    name=f"depth_left_{t}_{d}"
-                )
-
-    def add_depth_to_right_conss(self):
+    def add_branch_to_right_conss(self):
         em = self.tree_ensemble_manager_
-        for t, tm in enumerate(em):
-            for d in range(tm.max_depth):
-                lhs = gp.LinExpr()
-                for n in tm.nodes_at_depth(d):
-                    r = tm.tree.children_right[n]
-                    assert r != -1
-
-                    lhs += self.flow_vars[(t, r)]
-
-                rhs = 1 - self.branch_vars[(t, d)]
-                self.mip.addConstr(
-                    lhs <= rhs,
-                    name=f"depth_right_{t}_{d}"
-                )
+        self.branch_to_right_conss = self.mip.addConstrs(
+            gp.quicksum(
+                self.flow_vars[(t, em[t].right[n])]
+                for n in em[t].nodes_at_depth(d)
+            ) <= 1 - self.branch_vars[(t, d)]
+            for t in range(em.n_trees)
+            for d in range(em[t].max_depth)
+        )
 
     def add_num_conss(self):
+        self.add_num_start_conss()
+        self.add_num_level_conss()
+        self.add_num_left_conss()
+        self.add_num_right_conss()
+        self.add_num_right_eps_conss()
+
+    def add_num_start_conss(self):
         em = self.tree_ensemble_manager_
-        for c, lvls in em.levels.items():            
-            # mu_{i}^{0} = 1
-            self.mip.addConstr(
-                self.num_vars[(c, 0)] == 1,
-                name=f"feature_consistency_numerical_{c}_0"
-            )
+        self.num_start_conss = self.mip.addConstrs(
+            self.num_vars[(f, 0)] == 1.0
+            for f in em.levels
+        )
 
-            # mu_{i}^{j} <= mu_{i}^{j-1}
-            for j in range(1, len(lvls)):
-                self.mip.addConstr(
-                    self.num_vars[(c, j)] <= self.num_vars[(c, j-1)],
-                    name=f"feature_consistency_numerical_{c}_{j}"
-                )
-                lvl = lvls[j]
-                for t, tm in enumerate(em):
-                    for n in tm.nodes_split_on(c):
-                        th = tm.threshold[n]
-                        if lvl == th:
-                            l = tm.tree.children_left[n]
-                            r = tm.tree.children_right[n]
+    def add_num_level_conss(self):
+        em = self.tree_ensemble_manager_
+        self.num_level_conss = self.mip.addConstrs(
+            self.num_vars[(f, j-1)] >=
+            self.num_vars[(f, j)]
+            for f in em.levels
+            for j in range(1, len(em.levels[f]))
+        )
 
-                            # mu_{i}^{j} <= 1 - y_{t, l}
-                            self.mip.addConstr(
-                                self.num_vars[(c, j)] >= 1 - self.flow_vars[(t, l)],
-                                name=f"feature_consistency_left_{c}_{j}_{t}_{n}"
-                            )
-
-                            # mu_{i}^{j-1} >= y_{t, r}
-                            self.mip.addConstr(
-                                self.num_vars[(c, j-1)] >= self.flow_vars[(t, r)],
-                                name=f"feature_consistency_right_{c}_{j}_{t}_{n}"
-                            )
-
-                            # mu_{i}^{j} >= eps_{i} * y_{t, r}
-                            self.mip.addConstr(
-                                self.num_vars[(c, j)] >= em.eps[c] * self.flow_vars[(t, r)],
-                                name=f"feature_consistency_eps_{c}_{j}_{t}_{n}"
-                            )
-
+    def add_num_left_conss(self):
+        em = self.tree_ensemble_manager_
+        self.num_left_conss = self.mip.addConstrs(
+            self.num_vars[(f, j)] <=
+            1 - self.flow_vars[(t, em[t].left[n])]
+            for f in em.levels
+            for j in range(1, len(em.levels[f]))
+            for t in range(em.n_trees)
+            for n in em[t].nodes_split_on(f)
+            if em[t].threshold[n] == em.levels[f][j]
+        )
+            
+    def add_num_right_conss(self):
+        em = self.tree_ensemble_manager_
+        self.num_right_conss = self.mip.addConstrs(
+            self.num_vars[(f, j-1)] >=
+            self.flow_vars[(t, em[t].right[n])]
+            for f in em.levels
+            for j in range(1, len(em.levels[f]))
+            for t in range(em.n_trees)
+            for n in em[t].nodes_split_on(f)
+            if em[t].threshold[n] == em.levels[f][j]
+        )
+    
+    def add_num_right_eps_conss(self):
+        em = self.tree_ensemble_manager_
+        eps = em.eps
+        self.num_right_eps_conss = self.mip.addConstrs(
+            self.num_vars[(f, j)] >=
+            eps[f]*self.flow_vars[(t, em[t].right[n])]
+            for f in em.levels
+            for j in range(1, len(em.levels[f]))
+            for t in range(em.n_trees)
+            for n in em[t].nodes_split_on(f)
+            if em[t].threshold[n] == em.levels[f][j]
+        )
 
     def add_bin_conss(self):
-        em = self.tree_ensemble_manager_
-        for c in self.bin_vars:
-            for t, tm in enumerate(em):
-                for n in tm.nodes_split_on(c):
-                    l = tm.tree.children_left[n]
-                    r = tm.tree.children_right[n]
+        self.add_bin_left_conss()
+        self.add_bin_right_conss()
 
-                    # om_{i} >= 1 - y_{t, l}
-                    self.mip.addConstr(
-                        self.bin_vars[c] >= 1 - self.flow_vars[(t, l)],
-                        name=f"feature_consistency_binary_left_{c}_{t}_{n}"
-                    )
-                    
-                    # om_{i} >= y_{t, r}
-                    self.mip.addConstr(
-                        self.bin_vars[c] >= self.flow_vars[(t, r)],
-                        name=f"feature_consistency_binary_right_{c}_{t}_{n}"
-                    )
-
-    def add_cat_conss(self):
+    def add_bin_left_conss(self):
         fe = self.feature_encoder_
         em = self.tree_ensemble_manager_
-        for c, cat in fe.cat.items():
-            lhs = gp.LinExpr()
-            for j in cat:
-                lhs += self.cat_vars[j]
-                for t, tm in enumerate(em):
-                    for n in tm.nodes_split_on(c):
-                        l = tm.tree.children_left[n]
-                        r = tm.tree.children_right[n]
-                        if tm.category[n] == j:
-                            # nu_{c}^{j} >= 1 - y_{t, l}
-                            self.mip.addConstr(
-                                self.cat_vars[j] >= 1 - self.flow_vars[(t, l)],
-                                name=f"feature_consistency_categorical_left_{c}_{j}_{t}_{n}"
-                            )
+        self.bin_left_conss = self.mip.addConstrs(
+            self.bin_vars[f] <=
+            1 - self.flow_vars[(t, em[t].left[n])]
+            for f in fe.types
+            for t in range(em.n_trees)
+            if fe.types[f] == Feature.BINARY
+            for n in em[t].nodes_split_on(f)
+        )
 
-                            # nu_{c}^{j} >= y_{t, r}
-                            self.mip.addConstr(
-                                self.cat_vars[j] >= self.flow_vars[(t, r)],
-                                name=f"feature_consistency_categorical_right_{c}_{j}_{t}_{n}"
-                            )
-            self.mip.addConstr(
-                lhs == 1.0,
-                name=f"feature_consistency_categorical_{c}"
-            )
-    
-    def add_prob_conss(self):
+    def add_bin_right_conss(self):
+        fe = self.feature_encoder_
+        em = self.tree_ensemble_manager_
+        self.bin_right_conss = self.mip.addConstrs(
+            self.bin_vars[f] >=
+            self.flow_vars[(t, em[t].right[n])]
+            for f in fe.types
+            for t in range(em.n_trees)
+            if fe.types[f] == Feature.BINARY
+            for n in em[t].nodes_split_on(f)
+        )
+
+    def add_cat_conss(self):
+        self.add_cat_left_conss()
+        self.add_cat_right_conss()
+        self.add_cat_sum_conss()
+
+    def add_cat_left_conss(self):
+        fe = self.feature_encoder_
+        em = self.tree_ensemble_manager_
+        self.cat_left_conss = self.mip.addConstrs(
+            self.cat_vars[c] <=
+            self.flow_vars[(t, em[t].left[n])]
+            for c in fe.inv_cat
+            for t in range(em.n_trees)
+            for n in em[t].nodes_split_on(fe.inv_cat[c])
+            if em[t].category[n] == c
+        )
+
+    def add_cat_right_conss(self):
+        fe = self.feature_encoder_
+        em = self.tree_ensemble_manager_
+        self.cat_right_conss = self.mip.addConstrs(
+            self.cat_vars[c] >=
+            self.flow_vars[(t, em[t].right[n])]
+            for c in fe.inv_cat
+            for t in range(em.n_trees)
+            for n in em[t].nodes_split_on(fe.inv_cat[c])
+            if em[t].category[n] == c
+        )
+
+    def add_cat_sum_conss(self):
+        fe = self.feature_encoder_
+        self.cat_sum_conss = self.mip.addConstrs(
+            gp.quicksum(
+                self.cat_vars[c]
+                for c in fe.cat[f]
+            ) == 1.0
+            for f in fe.cat
+        )
+
+    def add_vote_conss(self):
         em = self.tree_ensemble_manager_
         w = self.weights_
         rhs = gp.tupledict()
@@ -409,20 +449,20 @@ class SeparatorMIP(BaseSeparator):
                         vs = (vs == mv).astype(int)
                     v = vs[c]
                     rhs[c] += w[t]*v*self.flow_vars[(t, n)]
-        self.prob_conss = self.mip.addConstrs(
-            self.prob_vars[c] == rhs[c]
+        self.vote_conss = self.mip.addConstrs(
+            self.vote_vars[c] == rhs[c]
             for c in range(em.n_classes)
         )
     
-    def add_prob_u_conss(
+    def add_vote_u_conss(
         self,
         u,
-        cs: list[int],
+        classes: list[int],
     ):
         em = self.tree_ensemble_manager_
         w = self.weights_
         rhs = gp.tupledict()
-        for c in cs:
+        for c in classes:
             rhs[c] = gp.LinExpr()
             for t, tm in enumerate(em):
                 for n in tm.leaves:
@@ -432,32 +472,33 @@ class SeparatorMIP(BaseSeparator):
                         vs = (vs == mv).astype(int)
                     v = vs[c]
                     rhs[c] += w[t]*v*u[t]*self.flow_vars[(t, n)]
-        self.prob_u_conss = self.mip.addConstrs(
-            self.prob_u_vars[c] == rhs[c]
-            for c in cs
+        self.vote_u_conss = self.mip.addConstrs(
+            self.vote_u_vars[c] == rhs[c]
+            for c in classes
         )
 
-    def add_maj_class_conss(self, cl):
+    def add_maj_class_conss(self, mc: int):
         em = self.tree_ensemble_manager_
         w = self.weights_
         wm = w.min()
         eps = self.eps
         rhs = gp.tupledict()
         for c in range(em.n_classes):
-            if c == cl:
+            if c == mc:
                 continue
-            elif c < cl:
+            elif c < mc:
                 rhs[c] = eps * wm
             else:
                 rhs[c] = 0.0
         self.maj_class_conss = self.mip.addConstrs(
-            self.prob_u_vars[cl] - self.prob_u_vars[c] >= rhs[c]
-            for c in rhs
+            self.vote_vars[mc]-self.vote_vars[c] >= rhs[c]
+            for c in range(em.n_classes)
+            if c != mc
         )
             
     def add_objective(self, cl, cp):
         self.mip.setObjective(
-            self.prob_u_vars[cp] - self.prob_u_vars[cl],
+            self.vote_u_vars[cp] - self.vote_u_vars[cl],
             GRB.MAXIMIZE
         )
 
