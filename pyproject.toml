@@ -29,6 +29,7 @@ dependencies = [
     "numpy",
     "gurobipy",
     "scikit-learn",
+    "anytree",
 ]
 
 [project.urls]

@@ -1,6 +1,7 @@
 import gurobipy as gp
 from gurobipy import GRB
 
+import time
 import numpy as np
 
 from .base import BasePruner
@@ -13,11 +14,14 @@ class PrunerMIP(BasePruner):
     # Gurobi model and variables.
     mip: gp.Model
     u: gp.tupledict[int, gp.Var]
+    st: float
     
     def __init__(self, E, w=None, voting="hard", eps=1.0):
         super().__init__(E, w, voting)
         self.eps = eps
         self.wm = self.weights_.min()
+        self.mip = gp.Model("MIP", env=self.env)
+        self.st = 0
    
     def set_gurobi_param(self, param, value):
         # Set a Gurobi parameter.
@@ -25,21 +29,21 @@ class PrunerMIP(BasePruner):
 
     def prune(self, X):
         self._build_base_mip()
-        return self._prune(X)
+        self.st = 0
+        return self._solve_mip(X)
         
     def reprune(self, X):
-        return self._prune(X)
+        return self._solve_mip(X)
 
     def _build_base_mip(self):
-        self.mip = gp.Model("MIP", env=self.env)
-        
         ne = len(self.estimators_)
-        self.u = self.mip.addVars(ne, vtype=GRB.BINARY, name="u")
+        self.u = self.mip.addVars(
+            ne, vtype=GRB.BINARY, name="u")
 
         obj = gp.quicksum(self.u)
         self.mip.setObjective(obj, GRB.MINIMIZE)
 
-    def _prune(self, X):
+    def _solve_mip(self, X):
         n = len(X)
         nc = self.n_classes_
         ne = len(self.estimators_)
@@ -68,15 +72,19 @@ class PrunerMIP(BasePruner):
                 cons = self.mip.addLConstr(lhs >= rhs)
                 cons.Lazy = 1
         
+        s = time.time()
         self.mip.optimize()
+        e = time.time()
+        
+        self.st += (e-s)
 
         if self.mip.status == GRB.INFEASIBLE:
             return None
 
-        return self.get_u(u)
+        return self.asarray(u)
 
     @staticmethod
-    def get_u(u):
+    def asarray(u: gp.tupledict[int, gp.Var]):
         n = len(u)
         v = np.array([u[i].X for i in range(n)])
         return (v >= 0.5).astype(int)

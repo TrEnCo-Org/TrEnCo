@@ -9,16 +9,8 @@ class PrunerGreedy(BasePruner):
     def __init__(self, E, ne, w=None, voting="hard"):
         super().__init__(E, w, voting)
         self.n_estimators_ = ne
-        self.scores = np.zeros(len(self.estimators_))
 
     def prune(self, X):
-        self.scores = np.zeros(len(self.estimators_))
-        return self._prune(X)
-
-    def reprune(self, X):
-        return self._prune(X)
-    
-    def _prune(self, X):
         E = self.estimators_
         w = self.weights_
         ne = len(E)
@@ -39,9 +31,8 @@ class PrunerGreedy(BasePruner):
         
         # Compute the scores.
         scores = np.sum((p - y)**2, axis=(-2, -1))
-        self.scores += scores
-        
-        idx = np.argsort(self.scores / w)
+
+        idx = np.argsort(scores / w)
         u = np.zeros(ne, dtype=int)
         u[idx[:ng]] = 1
         return u
